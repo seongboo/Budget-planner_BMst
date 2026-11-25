@@ -119,6 +119,18 @@
 </div>
 
 </section>
+<section id="pg-sum" hidden>
+<div class="card">
+  <h2>월별 요약</h2>
+  <div class="row" style="align-items:center">
+    <button type="button" class="ghost" id="mPrev" style="flex:0 0 52px">◀</button>
+    <div id="mLabel" style="text-align:center;font-weight:700"></div>
+    <button type="button" class="ghost" id="mNext" style="flex:0 0 52px">▶</button>
+  </div>
+  <table id="sumTable"></table>
+  <div class="sub" id="sumNote" style="margin-top:10px"></div>
+</div>
+</section>
 <section id="pg-set" hidden>
 <div class="card">
   <h2>설정</h2>
@@ -147,7 +159,7 @@
 
 </section>
 </main>
-<nav id="tabs"><button type="button" data-pg="home" class="on">홈</button><button type="button" data-pg="set">설정</button></nav>
+<nav id="tabs"><button type="button" data-pg="home" class="on">홈</button><button type="button" data-pg="sum">요약</button><button type="button" data-pg="set">설정</button></nav>
 
 <script>
 /* ===== 순수 계산 로직 (BEGIN) ===== */
@@ -203,6 +215,27 @@ function otherSpend(st,today){
   const y=today.getFullYear(), m=today.getMonth();
   return st.entries.filter(e=>{ if(e.type!=='other') return false; const d=parse(e.date); return d.getFullYear()===y&&d.getMonth()===m; })
                    .reduce((s,e)=>s+e.amount,0);
+}
+/* 월 요약 (현재 설정값 기준). 지난달도 현재 식비 예산·고정지출·수입으로 계산 */
+function monthSummary(st,y,m,today){
+  const first=new Date(y,m,1), last=new Date(y,m,dim(y,m));
+  const s0=parse(st.start);
+  const inMonth=e=>{ const d=parse(e.date); return d.getFullYear()===y&&d.getMonth()===m; };
+  const E=st.entries.filter(inMonth);
+  const sum=a=>a.reduce((t,e)=>t+e.amount,0);
+  // 이달 세이브 증감: 시작일~min(월말,오늘)의 일일 순증감 합
+  const from = s0>first ? s0 : first, to = last<today ? last : today;
+  let delta=0; for(let d=from; d<=to; d=addDays(d,1)) delta+=dayNet(st,d);
+  // 해당 월 말(현재 달은 오늘) 기준 누적 세이브
+  let B=0; for(let d=s0; d<=to; d=addDays(d,1)) B+=dayNet(st,d);
+  const cats={}; E.filter(e=>e.type==='other').forEach(e=>{cats[e.cat]=(cats[e.cat]||0)+e.amount;});
+  const other=Object.values(cats).reduce((t,v)=>t+v,0);
+  const incomeSum=st.incomes.reduce((t,f)=>t+(+f.amount||0),0);
+  const fixedSum=st.fixed.reduce((t,f)=>t+(+f.amount||0),0);
+  const fsave=fixedSaving(st,first);
+  return {foodSpent:sum(E.filter(e=>e.type==='food')), foodBudget:st.food,
+          big:sum(E.filter(e=>e.type==='big')), delta, B, cats, other, fsave,
+          leftover:incomeSum-fixedSum-st.food+fsave-other, hasData:E.length>0, started:to>=s0};
 }
 /* ===== 순수 계산 로직 (END) ===== */
 
@@ -342,9 +375,29 @@ $('shareBtn').onclick=async()=>{
 $('exp').onclick=()=>{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(st,null,1)],{type:'application/json'}));a.download='foodbudget-'+ymd(new Date())+'.json';a.click();};
 $('impBtn').onclick=()=>$('imp').click();
 $('imp').onchange=e=>{const f=e.target.files[0]; if(!f) return; f.text().then(t=>{try{st=JSON.parse(t);migrate();$('food').value=fmt(st.food);$('start').value=st.start;save();}catch(_){alert('올바른 JSON이 아닙니다.');}});};
+let sumY=new Date().getFullYear(), sumM=new Date().getMonth();
+function renderSummary(){
+  const t=new Date(), today=new Date(t.getFullYear(),t.getMonth(),t.getDate());
+  const r=monthSummary(st,sumY,sumM,today), cur=(sumY===today.getFullYear()&&sumM===today.getMonth());
+  $('mLabel').textContent=sumY+'년 '+(sumM+1)+'월'+(cur?' (이번 달)':'');
+  const sgn=n=>(n>0?'+':'')+won(n);
+  const row=(k,v,cls)=>'<tr><td>'+k+'</td><td style="text-align:right" class="'+(cls||'')+'">'+v+'</td></tr>';
+  let h=row('식비 지출',won(r.foodSpent))+row('식비 예산',won(r.foodBudget))
+       +row('이달 세이브 증감',sgn(r.delta),r.delta>=0?'pos':'neg')
+       +row('누적 세이브 ('+(cur?'오늘':'월말')+' 기준)',won(r.B),r.B>=0?'pos':'neg')
+       +row('큰 지출',won(r.big))+row('고정지출 절약분',sgn(r.fsave),r.fsave>=0?'pos':'neg');
+  Object.keys(r.cats).forEach(c=>{h+=row('· '+c,won(r.cats[c]));});
+  h+=row('기타 지출 합계',won(r.other))+row('<b>이달 남는 돈</b>','<b>'+won(r.leftover)+'</b>',r.leftover>=0?'pos':'neg');
+  $('sumTable').innerHTML=h;
+  $('sumNote').textContent = (r.started?'':'추적 시작일 이전의 달입니다. ')
+    +(cur?'':'지난 달도 현재 설정값(식비 예산·수입·고정지출)으로 계산합니다. 설정을 바꾸면 과거 숫자도 바뀝니다.');
+}
+$('mPrev').onclick=()=>{ sumM--; if(sumM<0){sumM=11;sumY--;} renderSummary(); };
+$('mNext').onclick=()=>{ sumM++; if(sumM>11){sumM=0;sumY++;} renderSummary(); };
 document.querySelectorAll('#tabs button').forEach(b=>b.onclick=()=>{
   const pg=b.dataset.pg;
-  $('pg-home').hidden = pg!=='home'; $('pg-set').hidden = pg!=='set';
+  ['home','sum','set'].forEach(k=>{ $('pg-'+k).hidden = pg!==k; });
+  if(pg==='sum') renderSummary();
   document.querySelectorAll('#tabs button').forEach(x=>x.classList.toggle('on',x===b));
   window.scrollTo(0,0);
 });
