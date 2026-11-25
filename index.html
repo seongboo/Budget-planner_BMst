@@ -31,7 +31,13 @@
   .fixed-row .amt { flex:1 1 0; min-width:140px; }
   .fixed-row button.sm { flex:0 0 auto; padding:10px 14px; }
   .fixed-row .amt input { font-size:16px; padding:11px 28px 11px 9px; }
-  .fixed-item { margin-bottom:8px; }
+  .item, .fixed-item { background:#f4f6fa; border:1px solid #cfd6e0; border-left:4px solid var(--ac); border-radius:10px; padding:8px; margin-bottom:12px; }
+  .item .row, .fixed-item .row { margin:6px 0; }
+  .item input, .fixed-item input { background:#fff; }
+  textarea.memo { background:#fff !important; }
+  .sec { font-size:14px; font-weight:700; margin:20px 0 10px; padding-top:14px; border-top:2px solid var(--bd); }
+  .sec.first { margin-top:4px; padding-top:0; border-top:none; }
+  .sec .sub { font-weight:400; margin-left:6px; }
   textarea.memo { width:100%; font:inherit; font-size:13px; padding:8px; border:1px solid var(--bd); border-radius:8px; resize:vertical; background:#fafafa; }
   main { padding-bottom:76px; }
   section[hidden] { display:none; }
@@ -102,12 +108,13 @@
 <section id="pg-set" hidden>
 <div class="card">
   <h2>설정</h2>
-  <label>고정 수입 (항목명 / 금액 / 입금일)</label>
+  <div class="sec first">고정 수입 <span class="sub">항목명 · 금액 · 입금일</span></div>
   <div id="incomeList"></div>
   <div class="row"><button class="ghost" id="addIncome">+ 수입 항목 추가</button></div>
-  <label>고정 지출</label>
+  <div class="sec">고정 지출 <span class="sub">항목명 · 금액 · 메모</span></div>
   <div id="fixedList"></div>
   <div class="row"><button class="ghost" id="addFixed">+ 고정지출 항목 추가</button></div>
+  <div class="sec">식비 · 기타</div>
   <div class="row"><label>월 식비 예산</label><span class="amt"><input type="text" id="food" class="money" inputmode="numeric"></span></div>
   <div class="row"><label>추적 시작일</label><input type="date" id="start"></div>
   <div class="sub" id="calc"></div>
@@ -234,7 +241,8 @@ function render(){
     a.onchange=()=>{st.incomes[i].amount=num(a.value);save();};
     d.onchange=()=>{st.incomes[i].day=d.value;save();};
     b.onclick=()=>{st.incomes.splice(i,1);save();};
-    $('incomeList').appendChild(r);
+    const w=document.createElement('div'); w.className='item'; w.appendChild(r);
+    $('incomeList').appendChild(w);
   });
 
   $('fixedList').innerHTML='';
