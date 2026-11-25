@@ -70,9 +70,12 @@
     <select id="eType">
       <option value="food">식비 (외식·배달·장보기)</option>
       <option value="big">큰 지출</option>
+      <option value="fixed">고정지출 결제</option>
     </select>
     <span class="amt"><input type="text" id="eAmt" class="money" placeholder="금액" inputmode="numeric"></span>
   </div>
+  <div class="row" id="fixedRow" style="display:none"><select id="eFixed"></select></div>
+  <div class="warn" id="eWarn"></div>
   <div class="row" id="quick">
     <button type="button" class="ghost" data-add="1000">+1천</button>
     <button type="button" class="ghost" data-add="5000">+5천</button>
@@ -172,6 +175,17 @@ function compute(st,today){
   const R = dim(today.getFullYear(),today.getMonth())-today.getDate()+1;
   return {B, left, R, a:baseAllowance(st.food,today)};
 }
+/* 해당 월의 고정지출 절약분: 같은 달·같은 항목은 마지막 입력만 반영, 차이 = 예산(planned) - 실제 */
+function fixedSaving(st,today){
+  const y=today.getFullYear(), m=today.getMonth(), last={};
+  st.entries.forEach((e,idx)=>{
+    if(e.type!=='fixed') return;
+    const d=parse(e.date); if(d.getFullYear()!==y||d.getMonth()!==m) return;
+    const k=e.fid||e.name, prev=last[k];
+    if(!prev || e.date>prev.e.date || (e.date===prev.e.date && idx>prev.idx)) last[k]={e,idx};
+  });
+  return Object.values(last).reduce((sum,{e})=>sum+(e.planned-e.amount),0);
+}
 /* ===== 순수 계산 로직 (END) ===== */
 
 const KEY='foodbudget.v1';
@@ -182,6 +196,7 @@ let st=JSON.parse(localStorage.getItem(KEY)||'null')||{incomes:[],fixed:[],food:
 function migrate(){ // 단일 income -> incomes 목록
   if(!st.incomes){ st.incomes = st.income>0 ? [{name:'수입',amount:st.income,day:''}] : []; }
   delete st.income;
+  st.fixed.forEach(f=>{ if(!f.id) f.id='f'+Date.now().toString(36)+Math.random().toString(36).slice(2,6); });
 }
 migrate();
 const $=id=>document.getElementById(id);
@@ -201,10 +216,11 @@ function render(){
   const fixedSum=st.fixed.reduce((s,f)=>s+(+f.amount||0),0);
   const incomeSum=st.incomes.reduce((s,f)=>s+(+f.amount||0),0);
   const rest=incomeSum-fixedSum;
-  const leftover=incomeSum-fixedSum-st.food;
+  const fsave=fixedSaving(st,new Date(today.getFullYear(),today.getMonth(),today.getDate()));
+  const leftover=incomeSum-fixedSum-st.food+fsave;
   $('leftover').textContent=won(leftover); $('leftover').className='big '+(leftover>=0?'pos':'neg');
   $('leftoverDetail').textContent = incomeSum>0
-    ? (leftover<0 ? '예산 초과: 수입보다 지출·식비 예산이 '+won(-leftover)+' 많습니다.' : '수입 '+won(incomeSum)+' − 고정지출 '+won(fixedSum)+' − 식비 예산 '+won(st.food))
+    ? (leftover<0 ? '예산 초과: 수입보다 지출·식비 예산이 '+won(-leftover)+' 많습니다.' : '수입 '+won(incomeSum)+' − 고정지출 '+won(fixedSum)+' − 식비 예산 '+won(st.food)+(fsave?' '+(fsave>0?'+':'−')+' 고정지출 절약분 '+won(Math.abs(fsave)):''))
     : '수입 항목을 입력하면 계산됩니다.';
   $('calc').textContent='수입 '+won(incomeSum)+' − 고정지출 '+won(fixedSum)+' = '+won(rest)+' (식비 예산 제외 전)';
   $('warn').textContent = st.food>rest && incomeSum>0 ? '식비 예산이 (수입 − 고정지출)보다 큽니다.' : '';
@@ -237,8 +253,11 @@ function render(){
     $('fixedList').appendChild(wrap);
   });
 
+  const sel=$('eFixed'), keep=sel.value;
+  sel.innerHTML=st.fixed.map(f=>'<option value="'+f.id+'">'+((f.name||'(이름 없음)').replace(/</g,'&lt;'))+' (예산 '+won(f.amount)+')</option>').join('');
+  if(keep) sel.value=keep;
   const rows=[...st.entries].map((e,i)=>({e,i})).sort((x,y)=>y.e.date.localeCompare(x.e.date));
-  $('log').innerHTML=rows.map(({e,i})=>'<tr><td>'+e.date.slice(5)+'</td><td>'+(e.type==='food'?'식비':'큰지출('+(e.mode==='carry'?'차감':'분할')+')')+'</td><td>'+(e.memo||'')+'</td><td style="text-align:right">'+won(e.amount)+'</td><td><button class="ghost sm" data-i="'+i+'">삭제</button></td></tr>').join('')||'<tr><td class="sub">내역 없음</td></tr>';
+  $('log').innerHTML=rows.map(({e,i})=>'<tr><td>'+e.date.slice(5)+'</td><td>'+(e.type==='food'?'식비':e.type==='fixed'?'고정('+(e.name||'')+')':'큰지출('+(e.mode==='carry'?'차감':'분할')+')')+'</td><td>'+(e.memo||'')+(e.type==='fixed'?' <span class="sub">예산 '+won(e.planned)+' → '+((e.planned-e.amount)>=0?'+':'')+won(e.planned-e.amount)+'</span>':'')+'</td><td style="text-align:right">'+won(e.amount)+'</td><td><button class="ghost sm" data-i="'+i+'">삭제</button></td></tr>').join('')||'<tr><td class="sub">내역 없음</td></tr>';
   $('log').querySelectorAll('button').forEach(b=>b.onclick=()=>{st.entries.splice(+b.dataset.i,1);save();});
 }
 
@@ -246,13 +265,28 @@ $('food').value=fmt(st.food); $('start').value=st.start; $('eDate').value=ymd(ne
 $('addIncome').onclick=()=>{st.incomes.push({name:'',amount:0,day:''});save();};
 $('food').onchange=e=>{st.food=num(e.target.value);save();};
 $('start').onchange=e=>{st.start=e.target.value;save();};
-$('addFixed').onclick=()=>{st.fixed.push({name:'',amount:0,memo:''});save();};
-$('eType').onchange=e=>{$('modeRow').style.display=e.target.value==='big'?'flex':'none';};
+$('addFixed').onclick=()=>{st.fixed.push({id:'f'+Date.now().toString(36)+Math.random().toString(36).slice(2,6),name:'',amount:0,memo:''});save();};
+function applyType(){
+  const t=$('eType').value;
+  $('modeRow').style.display=t==='big'?'flex':'none';
+  $('fixedRow').style.display=t==='fixed'?'flex':'none';
+  $('eWarn').textContent='';
+  if(t==='fixed') prefillFixed();
+}
+function prefillFixed(){ const f=st.fixed.find(x=>x.id===$('eFixed').value); if(f && !num($('eAmt').value)) $('eAmt').value=fmt(f.amount); }
+$('eType').onchange=applyType;
+$('eFixed').onchange=()=>{ const f=st.fixed.find(x=>x.id===$('eFixed').value); if(f) $('eAmt').value=fmt(f.amount); };
 document.querySelectorAll('#quick button').forEach(b=>b.onclick=()=>{ $('eAmt').value=fmt(num($('eAmt').value)+(+b.dataset.add)); });
 $('addBtn').onclick=()=>{
   const amt=num($('eAmt').value); if(!(amt>0)||!$('eDate').value) return;
   const type=$('eType').value;
-  st.entries.push({date:$('eDate').value,type,amount:amt,mode:type==='big'?$('eMode').value:null,memo:$('eMemo').value});
+  if(type==='fixed'){
+    const f=st.fixed.find(x=>x.id===$('eFixed').value);
+    if(!f){ $('eWarn').textContent='설정 탭에 고정지출 항목을 먼저 등록하세요.'; return; }
+    st.entries.push({date:$('eDate').value,type:'fixed',fid:f.id,name:f.name,planned:+f.amount||0,amount:amt,mode:null,memo:$('eMemo').value});
+  } else {
+    st.entries.push({date:$('eDate').value,type,amount:amt,mode:type==='big'?$('eMode').value:null,memo:$('eMemo').value});
+  }
   $('eAmt').value=''; $('eMemo').value=''; save();
 };
 function summaryText(){
