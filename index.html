@@ -35,6 +35,8 @@
   .item .row, .fixed-item .row { margin:6px 0; }
   .item input, .fixed-item input { background:#fff; }
   textarea.memo { background:#fff !important; }
+  textarea.memo[hidden] { display:none; }
+  button.memo-toggle { margin:2px 0 4px; }
   .sec { font-size:14px; font-weight:700; margin:20px 0 10px; padding-top:14px; border-top:2px solid var(--bd); }
   .sec.first { margin-top:4px; padding-top:0; border-top:none; }
   .sec .sub { font-weight:400; margin-left:6px; }
@@ -77,6 +79,9 @@
       <option value="food">식비 (외식·배달·장보기)</option>
       <option value="big">큰 지출</option>
       <option value="fixed">고정지출 결제</option>
+      <option value="cat:교통">교통</option>
+      <option value="cat:쇼핑">쇼핑</option>
+      <option value="cat:문화·취미">문화·취미</option>
     </select>
     <span class="amt"><input type="text" id="eAmt" class="money" placeholder="금액" inputmode="numeric"></span>
   </div>
@@ -193,9 +198,16 @@ function fixedSaving(st,today){
   });
   return Object.values(last).reduce((sum,{e})=>sum+(e.planned-e.amount),0);
 }
+/* 해당 월의 식비 외 지출 합계(교통·쇼핑·문화취미): 이번 달 남는 돈에서 차감 */
+function otherSpend(st,today){
+  const y=today.getFullYear(), m=today.getMonth();
+  return st.entries.filter(e=>{ if(e.type!=='other') return false; const d=parse(e.date); return d.getFullYear()===y&&d.getMonth()===m; })
+                   .reduce((s,e)=>s+e.amount,0);
+}
 /* ===== 순수 계산 로직 (END) ===== */
 
 const KEY='foodbudget.v1';
+const openMemo=new Set();   // 펼쳐 둔 메모(고정지출 id)
 const num=s=>+String(s).replace(/[^0-9]/g,'')||0;           // 쉼표 등 제거 후 정수
 const fmt=n=>n?Number(n).toLocaleString('ko-KR'):'';          // 15000 -> '15,000'
 document.addEventListener('input',e=>{ if(e.target.classList&&e.target.classList.contains('money')) e.target.value=fmt(num(e.target.value)); });
@@ -224,10 +236,11 @@ function render(){
   const incomeSum=st.incomes.reduce((s,f)=>s+(+f.amount||0),0);
   const rest=incomeSum-fixedSum;
   const fsave=fixedSaving(st,new Date(today.getFullYear(),today.getMonth(),today.getDate()));
-  const leftover=incomeSum-fixedSum-st.food+fsave;
+  const ospend=otherSpend(st,new Date(today.getFullYear(),today.getMonth(),today.getDate()));
+  const leftover=incomeSum-fixedSum-st.food+fsave-ospend;
   $('leftover').textContent=won(leftover); $('leftover').className='big '+(leftover>=0?'pos':'neg');
   $('leftoverDetail').textContent = incomeSum>0
-    ? (leftover<0 ? '예산 초과: 수입보다 지출·식비 예산이 '+won(-leftover)+' 많습니다.' : '수입 '+won(incomeSum)+' − 고정지출 '+won(fixedSum)+' − 식비 예산 '+won(st.food)+(fsave?' '+(fsave>0?'+':'−')+' 고정지출 절약분 '+won(Math.abs(fsave)):''))
+    ? (leftover<0 ? '예산 초과: 수입보다 지출·식비 예산이 '+won(-leftover)+' 많습니다.' : '수입 '+won(incomeSum)+' − 고정지출 '+won(fixedSum)+' − 식비 예산 '+won(st.food)+(fsave?' '+(fsave>0?'+':'−')+' 고정지출 절약분 '+won(Math.abs(fsave)):'')+(ospend?' − 기타 지출 '+won(ospend):''))
     : '수입 항목을 입력하면 계산됩니다.';
   $('calc').textContent='수입 '+won(incomeSum)+' − 고정지출 '+won(fixedSum)+' = '+won(rest)+' (식비 예산 제외 전)';
   $('warn').textContent = st.food>rest && incomeSum>0 ? '식비 예산이 (수입 − 고정지출)보다 큽니다.' : '';
@@ -255,9 +268,13 @@ function render(){
     b.onclick=()=>{st.fixed.splice(i,1);save();};
     const memo=document.createElement('textarea'); memo.className='memo'; memo.rows=2;
     memo.placeholder='메모 (예: 넷플릭스 17,000 / 유튜브 14,900)'; memo.value=f.memo||'';
-    memo.onchange=()=>{st.fixed[i].memo=memo.value;save();};
+    memo.oninput=()=>{st.fixed[i].memo=memo.value; localStorage.setItem(KEY,JSON.stringify(st));};  // 입력 중에는 다시 그리지 않음
+    const isOpen=openMemo.has(f.id); memo.hidden=!isOpen;
+    const tg=document.createElement('button'); tg.type='button'; tg.className='ghost sm memo-toggle';
+    tg.textContent='메모'+(f.memo?' ✎':'')+(isOpen?' ▴':' ▾');
+    tg.onclick=()=>{ if(openMemo.has(f.id)) openMemo.delete(f.id); else openMemo.add(f.id); render(); };
     const wrap=document.createElement('div'); wrap.className='fixed-item';
-    wrap.appendChild(r); wrap.appendChild(memo);
+    wrap.appendChild(r); wrap.appendChild(tg); wrap.appendChild(memo);
     $('fixedList').appendChild(wrap);
   });
 
@@ -265,7 +282,7 @@ function render(){
   sel.innerHTML=st.fixed.map(f=>'<option value="'+f.id+'">'+((f.name||'(이름 없음)').replace(/</g,'&lt;'))+' (예산 '+won(f.amount)+')</option>').join('');
   if(keep) sel.value=keep;
   const rows=[...st.entries].map((e,i)=>({e,i})).sort((x,y)=>y.e.date.localeCompare(x.e.date));
-  $('log').innerHTML=rows.map(({e,i})=>'<tr><td>'+e.date.slice(5)+'</td><td>'+(e.type==='food'?'식비':e.type==='fixed'?'고정('+(e.name||'')+')':'큰지출('+(e.mode==='carry'?'차감':'분할')+')')+'</td><td>'+(e.memo||'')+(e.type==='fixed'?' <span class="sub">예산 '+won(e.planned)+' → '+((e.planned-e.amount)>=0?'+':'')+won(e.planned-e.amount)+'</span>':'')+'</td><td style="text-align:right">'+won(e.amount)+'</td><td><button class="ghost sm" data-i="'+i+'">삭제</button></td></tr>').join('')||'<tr><td class="sub">내역 없음</td></tr>';
+  $('log').innerHTML=rows.map(({e,i})=>'<tr><td>'+e.date.slice(5)+'</td><td>'+(e.type==='food'?'식비':e.type==='fixed'?'고정('+(e.name||'')+')':e.type==='other'?e.cat:'큰지출('+(e.mode==='carry'?'차감':'분할')+')')+'</td><td>'+(e.memo||'')+(e.type==='fixed'?' <span class="sub">예산 '+won(e.planned)+' → '+((e.planned-e.amount)>=0?'+':'')+won(e.planned-e.amount)+'</span>':'')+'</td><td style="text-align:right">'+won(e.amount)+'</td><td><button class="ghost sm" data-i="'+i+'">삭제</button></td></tr>').join('')||'<tr><td class="sub">내역 없음</td></tr>';
   $('log').querySelectorAll('button').forEach(b=>b.onclick=()=>{st.entries.splice(+b.dataset.i,1);save();});
 }
 
@@ -292,6 +309,8 @@ $('addBtn').onclick=()=>{
     const f=st.fixed.find(x=>x.id===$('eFixed').value);
     if(!f){ $('eWarn').textContent='설정 탭에 고정지출 항목을 먼저 등록하세요.'; return; }
     st.entries.push({date:$('eDate').value,type:'fixed',fid:f.id,name:f.name,planned:+f.amount||0,amount:amt,mode:null,memo:$('eMemo').value});
+  } else if(type.startsWith('cat:')){
+    st.entries.push({date:$('eDate').value,type:'other',cat:type.slice(4),amount:amt,mode:null,memo:$('eMemo').value});
   } else {
     st.entries.push({date:$('eDate').value,type,amount:amt,mode:type==='big'?$('eMode').value:null,memo:$('eMemo').value});
   }
