@@ -59,6 +59,12 @@
     </select>
     <span class="amt"><input type="text" id="eAmt" class="money" placeholder="금액" inputmode="numeric"></span>
   </div>
+  <div class="row" id="quick">
+    <button type="button" class="ghost" data-add="1000">+1천</button>
+    <button type="button" class="ghost" data-add="5000">+5천</button>
+    <button type="button" class="ghost" data-add="10000">+1만</button>
+    <button type="button" class="ghost" data-add="50000">+5만</button>
+  </div>
   <div class="row" id="modeRow" style="display:none">
     <select id="eMode">
       <option value="carry">잔액에서 차감 (B에서 뺌)</option>
@@ -219,6 +225,7 @@ $('food').onchange=e=>{st.food=num(e.target.value);save();};
 $('start').onchange=e=>{st.start=e.target.value;save();};
 $('addFixed').onclick=()=>{st.fixed.push({name:'',amount:0,memo:''});save();};
 $('eType').onchange=e=>{$('modeRow').style.display=e.target.value==='big'?'flex':'none';};
+document.querySelectorAll('#quick button').forEach(b=>b.onclick=()=>{ $('eAmt').value=fmt(num($('eAmt').value)+(+b.dataset.add)); });
 $('addBtn').onclick=()=>{
   const amt=num($('eAmt').value); if(!(amt>0)||!$('eDate').value) return;
   const type=$('eType').value;
