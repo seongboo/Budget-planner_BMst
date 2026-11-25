@@ -26,7 +26,11 @@
   .sub { font-size:13px; color:var(--sub); }
   table { width:100%; border-collapse:collapse; font-size:13px; }
   td { padding:6px 4px; border-bottom:1px solid var(--bd); }
-  .fixed-row input:first-child { flex:2; }
+  .fixed-row { flex-wrap:wrap; }
+  .fixed-row > input:first-child { flex:1 1 100%; }
+  .fixed-row .amt { flex:1 1 0; min-width:140px; }
+  .fixed-row button.sm { flex:0 0 auto; padding:10px 14px; }
+  .fixed-row .amt input { font-size:16px; padding:11px 28px 11px 9px; }
   .fixed-item { margin-bottom:8px; }
   textarea.memo { width:100%; font:inherit; font-size:13px; padding:8px; border:1px solid var(--bd); border-radius:8px; resize:vertical; background:#fafafa; }
   main { padding-bottom:76px; }
