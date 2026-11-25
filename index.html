@@ -27,6 +27,8 @@
   table { width:100%; border-collapse:collapse; font-size:13px; }
   td { padding:6px 4px; border-bottom:1px solid var(--bd); }
   .fixed-row input:first-child { flex:2; }
+  .fixed-item { margin-bottom:8px; }
+  textarea.memo { width:100%; font:inherit; font-size:13px; padding:8px; border:1px solid var(--bd); border-radius:8px; resize:vertical; background:#fafafa; }
   .warn { color:var(--bad); font-size:13px; }
   .amt { position:relative; flex:1; display:block; }
   .amt input { text-align:right; padding-right:28px; }
@@ -198,7 +200,12 @@ function render(){
     n.onchange=()=>{st.fixed[i].name=n.value;save();};
     a.onchange=()=>{st.fixed[i].amount=num(a.value);save();};
     b.onclick=()=>{st.fixed.splice(i,1);save();};
-    $('fixedList').appendChild(r);
+    const memo=document.createElement('textarea'); memo.className='memo'; memo.rows=2;
+    memo.placeholder='메모 (예: 넷플릭스 17,000 / 유튜브 14,900)'; memo.value=f.memo||'';
+    memo.onchange=()=>{st.fixed[i].memo=memo.value;save();};
+    const wrap=document.createElement('div'); wrap.className='fixed-item';
+    wrap.appendChild(r); wrap.appendChild(memo);
+    $('fixedList').appendChild(wrap);
   });
 
   const rows=[...st.entries].map((e,i)=>({e,i})).sort((x,y)=>y.e.date.localeCompare(x.e.date));
@@ -210,7 +217,7 @@ $('food').value=fmt(st.food); $('start').value=st.start; $('eDate').value=ymd(ne
 $('addIncome').onclick=()=>{st.incomes.push({name:'',amount:0,day:''});save();};
 $('food').onchange=e=>{st.food=num(e.target.value);save();};
 $('start').onchange=e=>{st.start=e.target.value;save();};
-$('addFixed').onclick=()=>{st.fixed.push({name:'',amount:0});save();};
+$('addFixed').onclick=()=>{st.fixed.push({name:'',amount:0,memo:''});save();};
 $('eType').onchange=e=>{$('modeRow').style.display=e.target.value==='big'?'flex':'none';};
 $('addBtn').onclick=()=>{
   const amt=num($('eAmt').value); if(!(amt>0)||!$('eDate').value) return;
