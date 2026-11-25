@@ -29,6 +29,11 @@
   .fixed-row input:first-child { flex:2; }
   .fixed-item { margin-bottom:8px; }
   textarea.memo { width:100%; font:inherit; font-size:13px; padding:8px; border:1px solid var(--bd); border-radius:8px; resize:vertical; background:#fafafa; }
+  main { padding-bottom:76px; }
+  section[hidden] { display:none; }
+  #tabs { position:fixed; left:0; right:0; bottom:0; display:flex; background:#fff; border-top:1px solid var(--bd); padding-bottom:env(safe-area-inset-bottom); }
+  #tabs button { flex:1; background:#fff; color:var(--sub); border:none; border-radius:0; padding:14px 0; font-weight:600; }
+  #tabs button.on { color:var(--ac); box-shadow:inset 0 2px 0 var(--ac); }
   .warn { color:var(--bad); font-size:13px; }
   .amt { position:relative; flex:1; display:block; }
   .amt input { text-align:right; padding-right:28px; }
@@ -38,6 +43,7 @@
 <body>
 <main>
 
+<section id="pg-home">
 <div class="card" id="today">
   <h2>오늘</h2>
   <div class="sub">오늘 남은 허용 식비</div>
@@ -81,6 +87,13 @@
 </div>
 
 <div class="card">
+  <h2>내역</h2>
+  <table id="log"></table>
+</div>
+
+</section>
+<section id="pg-set" hidden>
+<div class="card">
   <h2>설정</h2>
   <label>고정 수입 (항목명 / 금액 / 입금일)</label>
   <div id="incomeList"></div>
@@ -92,11 +105,6 @@
   <div class="row"><label>추적 시작일</label><input type="date" id="start"></div>
   <div class="sub" id="calc"></div>
   <div class="warn" id="warn"></div>
-</div>
-
-<div class="card">
-  <h2>내역</h2>
-  <table id="log"></table>
 </div>
 
 <div class="card">
@@ -118,7 +126,9 @@
   <div class="sub">데이터는 이 브라우저에만 저장됩니다. 브라우저 데이터를 지우면 사라지므로 가끔 내보내기를 하세요.</div>
 </div>
 
+</section>
 </main>
+<nav id="tabs"><button type="button" data-pg="home" class="on">홈</button><button type="button" data-pg="set">설정</button></nav>
 
 <script>
 /* ===== 순수 계산 로직 (BEGIN) ===== */
@@ -267,6 +277,12 @@ $('shareBtn').onclick=async()=>{
 $('exp').onclick=()=>{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(st,null,1)],{type:'application/json'}));a.download='foodbudget-'+ymd(new Date())+'.json';a.click();};
 $('impBtn').onclick=()=>$('imp').click();
 $('imp').onchange=e=>{const f=e.target.files[0]; if(!f) return; f.text().then(t=>{try{st=JSON.parse(t);migrate();$('food').value=fmt(st.food);$('start').value=st.start;save();}catch(_){alert('올바른 JSON이 아닙니다.');}});};
+document.querySelectorAll('#tabs button').forEach(b=>b.onclick=()=>{
+  const pg=b.dataset.pg;
+  $('pg-home').hidden = pg!=='home'; $('pg-set').hidden = pg!=='set';
+  document.querySelectorAll('#tabs button').forEach(x=>x.classList.toggle('on',x===b));
+  window.scrollTo(0,0);
+});
 render();
 </script>
 </body>
