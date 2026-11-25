@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>식비 가계부</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<meta name="theme-color" content="#2563eb">
+<style>
+  :root { --bg:#f6f7f9; --card:#fff; --tx:#1c1f24; --sub:#6b7280; --ok:#0f9d58; --bad:#d93025; --ac:#2563eb; --bd:#e5e7eb; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:-apple-system,"Noto Sans KR",sans-serif; background:var(--bg); color:var(--tx); }
+  main { max-width:520px; margin:0 auto; padding:12px; }
+  .card { background:var(--card); border:1px solid var(--bd); border-radius:12px; padding:14px; margin-bottom:12px; }
+  h2 { font-size:15px; margin:0 0 10px; }
+  .big { font-size:28px; font-weight:700; }
+  .row { display:flex; gap:8px; align-items:center; margin:6px 0; }
+  .row > * { flex:1; }
+  label { font-size:13px; color:var(--sub); }
+  input, select, button { font:inherit; padding:9px; border:1px solid var(--bd); border-radius:8px; width:100%; background:#fff; }
+  button { background:var(--ac); color:#fff; border:none; cursor:pointer; }
+  button.ghost { background:#fff; color:var(--tx); border:1px solid var(--bd); }
+  button.sm { width:auto; padding:4px 10px; font-size:12px; }
+  .pos { color:var(--ok); } .neg { color:var(--bad); }
+  .sub { font-size:13px; color:var(--sub); }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  td { padding:6px 4px; border-bottom:1px solid var(--bd); }
+  .fixed-row input:first-child { flex:2; }
+  .warn { color:var(--bad); font-size:13px; }
+</style>
+</head>
+<body>
+<main>
+
+<div class="card" id="today">
+  <h2>오늘</h2>
+  <div class="sub">오늘 남은 허용 식비</div>
+  <div class="big" id="todayLeft">-</div>
+  <div class="sub" id="todayDetail"></div>
+  <hr style="border:0;border-top:1px solid var(--bd);margin:12px 0">
+  <div class="sub">누적 세이브 잔액 (어제까지)</div>
+  <div class="big" id="saveB">-</div>
+  <div class="sub" id="hint"></div>
+</div>
+
+<div class="card">
+  <h2>지출 입력</h2>
+  <div class="row"><label>날짜</label><input type="date" id="eDate"></div>
+  <div class="row">
+    <select id="eType">
+      <option value="food">식비 (외식·배달·장보기)</option>
+      <option value="big">큰 지출</option>
+    </select>
+    <input type="number" id="eAmt" placeholder="금액(원)" inputmode="numeric">
+  </div>
+  <div class="row" id="modeRow" style="display:none">
+    <select id="eMode">
+      <option value="carry">잔액에서 차감 (B에서 뺌)</option>
+      <option value="split">남은 날에 균등 분할 (하루 허용액 감소)</option>
+    </select>
+  </div>
+  <div class="row"><input type="text" id="eMemo" placeholder="메모(선택)"></div>
+  <div class="row"><button id="addBtn">추가</button></div>
+  <div class="sub">집밥을 먹은 날은 아무것도 입력하지 않으면 됩니다. 그날 허용액이 전부 세이브로 쌓입니다.</div>
+</div>
+
+<div class="card">
+  <h2>설정</h2>
+  <label>고정 수입 (항목명 / 금액 / 입금일)</label>
+  <div id="incomeList"></div>
+  <div class="row"><button class="ghost" id="addIncome">+ 수입 항목 추가</button></div>
+  <label>고정 지출</label>
+  <div id="fixedList"></div>
+  <div class="row"><button class="ghost" id="addFixed">+ 고정지출 항목 추가</button></div>
+  <div class="row"><label>월 식비 예산</label><input type="number" id="food" inputmode="numeric"></div>
+  <div class="row"><label>추적 시작일</label><input type="date" id="start"></div>
+  <div class="sub" id="calc"></div>
+  <div class="warn" id="warn"></div>
+</div>
+
+<div class="card">
+  <h2>내역</h2>
+  <table id="log"></table>
+</div>
+
+<div class="card">
+  <h2>오늘 요약 내보내기</h2>
+  <div class="row">
+    <button id="shareBtn">공유 (삼성 노트 선택)</button>
+    <button class="ghost" id="copyBtn">텍스트 복사</button>
+  </div>
+  <div class="sub" id="shareMsg"></div>
+</div>
+
+<div class="card">
+  <h2>백업</h2>
+  <div class="row">
+    <button class="ghost" id="exp">JSON 내보내기</button>
+    <button class="ghost" id="impBtn">가져오기</button>
+  </div>
+  <input type="file" id="imp" accept="application/json" style="display:none">
+  <div class="sub">데이터는 이 브라우저에만 저장됩니다. 브라우저 데이터를 지우면 사라지므로 가끔 내보내기를 하세요.</div>
+</div>
+
+</main>
+
+<script>
+/* ===== 순수 계산 로직 (BEGIN) ===== */
+function ymd(d){ const p=n=>String(n).padStart(2,'0'); return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate()); }
+function parse(s){ const [y,m,d]=s.split('-').map(Number); return new Date(y,m-1,d); }
+function dim(y,m){ return new Date(y,m+1,0).getDate(); }            // m: 0-based
+function addDays(d,k){ return new Date(d.getFullYear(),d.getMonth(),d.getDate()+k); }
+
+/* 날짜 d의 기본 허용액 a_d = M / N(해당 월 일수) */
+function baseAllowance(M,d){ return M/dim(d.getFullYear(),d.getMonth()); }
+
+/* 분할 지출 X를 날짜 e에 입력하면, e부터 월말까지 R일에 걸쳐 하루 X/R씩 허용액 감소 */
+function splitShare(entry,d){
+  const e=parse(entry.date);
+  if(e.getFullYear()!==d.getFullYear()||e.getMonth()!==d.getMonth()||d<e) return 0;
+  const R=dim(e.getFullYear(),e.getMonth())-e.getDate()+1;
+  return entry.amount/R;
+}
+
+/* 하루의 순증감: a_d - split분 - 식비 - 잔액차감 큰지출 */
+function dayNet(st,d){
+  const key=ymd(d);
+  let net=baseAllowance(st.food,d);
+  for(const e of st.entries){
+    if(e.type==='big' && e.mode==='split') net-=splitShare(e,d);
+    if(e.date!==key) continue;
+    if(e.type==='food') net-=e.amount;
+    else if(e.type==='big' && e.mode==='carry') net-=e.amount;
+  }
+  return net;
+}
+/* 오늘 직전까지 누적 B, 오늘 남은 허용액 */
+function compute(st,today){
+  const s=parse(st.start); let B=0;
+  for(let d=s; d<today; d=addDays(d,1)) B+=dayNet(st,d);
+  const left = today>=s ? dayNet(st,today) : 0;
+  const R = dim(today.getFullYear(),today.getMonth())-today.getDate()+1;
+  return {B, left, R, a:baseAllowance(st.food,today)};
+}
+/* ===== 순수 계산 로직 (END) ===== */
+
+const KEY='foodbudget.v1';
+let st=JSON.parse(localStorage.getItem(KEY)||'null')||{incomes:[],fixed:[],food:0,start:ymd(new Date()),entries:[]};
+function migrate(){ // 단일 income -> incomes 목록
+  if(!st.incomes){ st.incomes = st.income>0 ? [{name:'수입',amount:st.income,day:''}] : []; }
+  delete st.income;
+}
+migrate();
+const $=id=>document.getElementById(id);
+const won=n=>(n<0?'-':'')+Math.round(Math.abs(n)).toLocaleString('ko-KR')+'원';
+const save=()=>{localStorage.setItem(KEY,JSON.stringify(st));render();};
+
+function render(){
+  const today=new Date(); const c=compute(st,new Date(today.getFullYear(),today.getMonth(),today.getDate()));
+  $('todayLeft').textContent=won(c.left); $('todayLeft').className='big '+(c.left>=0?'pos':'neg');
+  $('todayDetail').textContent='기본 하루 허용액 '+won(c.a);
+  $('saveB').textContent=won(c.B); $('saveB').className='big '+(c.B>=0?'pos':'neg');
+  const tot=c.B+c.left;
+  $('hint').textContent = tot<0
+    ? '오늘 포함 남은 '+c.R+'일 동안 하루 '+won(c.a+tot/c.R)+'만 쓰면 이 달 안에 회복돼요.'
+    : '오늘까지 모두 반영한 합계: '+won(tot);
+
+  const fixedSum=st.fixed.reduce((s,f)=>s+(+f.amount||0),0);
+  const incomeSum=st.incomes.reduce((s,f)=>s+(+f.amount||0),0);
+  const rest=incomeSum-fixedSum;
+  $('calc').textContent='수입 '+won(incomeSum)+' − 고정지출 '+won(fixedSum)+' = '+won(rest)+' (식비 예산 제외 전)';
+  $('warn').textContent = st.food>rest && incomeSum>0 ? '식비 예산이 (수입 − 고정지출)보다 큽니다.' : '';
+
+  $('incomeList').innerHTML='';
+  st.incomes.forEach((f,i)=>{
+    const r=document.createElement('div'); r.className='row fixed-row';
+    r.innerHTML='<input placeholder="항목" value="'+f.name.replace(/"/g,'&quot;')+'"><input type="number" inputmode="numeric" placeholder="금액" value="'+f.amount+'"><input type="number" inputmode="numeric" min="1" max="31" placeholder="일" value="'+(f.day||'')+'" style="max-width:64px"><button class="ghost sm">삭제</button>';
+    const [n,a,d,b]=r.children;
+    n.onchange=()=>{st.incomes[i].name=n.value;save();};
+    a.onchange=()=>{st.incomes[i].amount=+a.value||0;save();};
+    d.onchange=()=>{st.incomes[i].day=d.value;save();};
+    b.onclick=()=>{st.incomes.splice(i,1);save();};
+    $('incomeList').appendChild(r);
+  });
+
+  $('fixedList').innerHTML='';
+  st.fixed.forEach((f,i)=>{
+    const r=document.createElement('div'); r.className='row fixed-row';
+    r.innerHTML='<input placeholder="항목" value="'+f.name.replace(/"/g,'&quot;')+'"><input type="number" inputmode="numeric" value="'+f.amount+'"><button class="ghost sm">삭제</button>';
+    const [n,a,b]=r.children;
+    n.onchange=()=>{st.fixed[i].name=n.value;save();};
+    a.onchange=()=>{st.fixed[i].amount=+a.value||0;save();};
+    b.onclick=()=>{st.fixed.splice(i,1);save();};
+    $('fixedList').appendChild(r);
+  });
+
+  const rows=[...st.entries].map((e,i)=>({e,i})).sort((x,y)=>y.e.date.localeCompare(x.e.date));
+  $('log').innerHTML=rows.map(({e,i})=>'<tr><td>'+e.date.slice(5)+'</td><td>'+(e.type==='food'?'식비':'큰지출('+(e.mode==='carry'?'차감':'분할')+')')+'</td><td>'+(e.memo||'')+'</td><td style="text-align:right">'+won(e.amount)+'</td><td><button class="ghost sm" data-i="'+i+'">삭제</button></td></tr>').join('')||'<tr><td class="sub">내역 없음</td></tr>';
+  $('log').querySelectorAll('button').forEach(b=>b.onclick=()=>{st.entries.splice(+b.dataset.i,1);save();});
+}
+
+$('food').value=st.food||''; $('start').value=st.start; $('eDate').value=ymd(new Date());
+$('addIncome').onclick=()=>{st.incomes.push({name:'',amount:0,day:''});save();};
+$('food').onchange=e=>{st.food=+e.target.value||0;save();};
+$('start').onchange=e=>{st.start=e.target.value;save();};
+$('addFixed').onclick=()=>{st.fixed.push({name:'',amount:0});save();};
+$('eType').onchange=e=>{$('modeRow').style.display=e.target.value==='big'?'flex':'none';};
+$('addBtn').onclick=()=>{
+  const amt=+$('eAmt').value; if(!(amt>0)||!$('eDate').value) return;
+  const type=$('eType').value;
+  st.entries.push({date:$('eDate').value,type,amount:amt,mode:type==='big'?$('eMode').value:null,memo:$('eMemo').value});
+  $('eAmt').value=''; $('eMemo').value=''; save();
+};
+function summaryText(){
+  const t=new Date(); const today=new Date(t.getFullYear(),t.getMonth(),t.getDate());
+  const c=compute(st,today), key=ymd(today);
+  const food=st.entries.filter(e=>e.date===key&&e.type==='food').reduce((s,e)=>s+e.amount,0);
+  const big=st.entries.filter(e=>e.date===key&&e.type==='big');
+  const L=['[식비 가계부] '+key,
+    '기본 하루 허용액: '+won(c.a),
+    '오늘 식비 지출: '+won(food)];
+  big.forEach(e=>L.push('큰 지출('+(e.mode==='carry'?'잔액 차감':'분할')+'): '+won(e.amount)+(e.memo?' - '+e.memo:'')));
+  L.push('오늘 남은 허용액: '+won(c.left),
+    '누적 세이브(어제까지): '+won(c.B),
+    '합계(오늘 반영): '+won(c.B+c.left));
+  return L.join('\n');
+}
+$('copyBtn').onclick=async()=>{
+  try{ await navigator.clipboard.writeText(summaryText()); $('shareMsg').textContent='복사됨. 삼성 노트에 붙여넣으세요.'; }
+  catch(_){ $('shareMsg').textContent='복사 실패. 이 브라우저는 클립보드 접근을 막고 있습니다.'; }
+};
+$('shareBtn').onclick=async()=>{
+  if(!navigator.share){ $('shareMsg').textContent='이 브라우저는 공유를 지원하지 않습니다. "텍스트 복사"를 사용하세요.'; return; }
+  try{ await navigator.share({title:'식비 가계부',text:summaryText()}); $('shareMsg').textContent=''; }
+  catch(e){ if(e.name!=='AbortError') $('shareMsg').textContent='공유 실패. "텍스트 복사"를 사용하세요.'; }
+};
+$('exp').onclick=()=>{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(st,null,1)],{type:'application/json'}));a.download='foodbudget-'+ymd(new Date())+'.json';a.click();};
+$('impBtn').onclick=()=>$('imp').click();
+$('imp').onchange=e=>{const f=e.target.files[0]; if(!f) return; f.text().then(t=>{try{st=JSON.parse(t);migrate();$('food').value=st.food||'';$('start').value=st.start;save();}catch(_){alert('올바른 JSON이 아닙니다.');}});};
+render();
+</script>
+</body>
+</html>
