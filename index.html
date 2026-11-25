@@ -47,6 +47,10 @@
   <div class="sub">누적 세이브 잔액 (어제까지)</div>
   <div class="big" id="saveB">-</div>
   <div class="sub" id="hint"></div>
+  <hr style="border:0;border-top:1px solid var(--bd);margin:12px 0">
+  <div class="sub">이번 달 남는 돈 (수입 − 고정지출 − 식비 예산)</div>
+  <div class="big" id="leftover">-</div>
+  <div class="sub" id="leftoverDetail"></div>
 </div>
 
 <div class="card">
@@ -183,6 +187,11 @@ function render(){
   const fixedSum=st.fixed.reduce((s,f)=>s+(+f.amount||0),0);
   const incomeSum=st.incomes.reduce((s,f)=>s+(+f.amount||0),0);
   const rest=incomeSum-fixedSum;
+  const leftover=incomeSum-fixedSum-st.food;
+  $('leftover').textContent=won(leftover); $('leftover').className='big '+(leftover>=0?'pos':'neg');
+  $('leftoverDetail').textContent = incomeSum>0
+    ? (leftover<0 ? '예산 초과: 수입보다 지출·식비 예산이 '+won(-leftover)+' 많습니다.' : '수입 '+won(incomeSum)+' − 고정지출 '+won(fixedSum)+' − 식비 예산 '+won(st.food))
+    : '수입 항목을 입력하면 계산됩니다.';
   $('calc').textContent='수입 '+won(incomeSum)+' − 고정지출 '+won(fixedSum)+' = '+won(rest)+' (식비 예산 제외 전)';
   $('warn').textContent = st.food>rest && incomeSum>0 ? '식비 예산이 (수입 − 고정지출)보다 큽니다.' : '';
 
