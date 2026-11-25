@@ -28,6 +28,9 @@
   td { padding:6px 4px; border-bottom:1px solid var(--bd); }
   .fixed-row input:first-child { flex:2; }
   .warn { color:var(--bad); font-size:13px; }
+  .amt { position:relative; flex:1; display:block; }
+  .amt input { text-align:right; padding-right:28px; }
+  .amt::after { content:'원'; position:absolute; right:10px; top:50%; transform:translateY(-50%); color:var(--sub); font-size:13px; pointer-events:none; }
 </style>
 </head>
 <body>
@@ -52,7 +55,7 @@
       <option value="food">식비 (외식·배달·장보기)</option>
       <option value="big">큰 지출</option>
     </select>
-    <input type="number" id="eAmt" placeholder="금액(원)" inputmode="numeric">
+    <span class="amt"><input type="text" id="eAmt" class="money" placeholder="금액" inputmode="numeric"></span>
   </div>
   <div class="row" id="modeRow" style="display:none">
     <select id="eMode">
@@ -73,7 +76,7 @@
   <label>고정 지출</label>
   <div id="fixedList"></div>
   <div class="row"><button class="ghost" id="addFixed">+ 고정지출 항목 추가</button></div>
-  <div class="row"><label>월 식비 예산</label><input type="number" id="food" inputmode="numeric"></div>
+  <div class="row"><label>월 식비 예산</label><span class="amt"><input type="text" id="food" class="money" inputmode="numeric"></span></div>
   <div class="row"><label>추적 시작일</label><input type="date" id="start"></div>
   <div class="sub" id="calc"></div>
   <div class="warn" id="warn"></div>
@@ -146,6 +149,9 @@ function compute(st,today){
 /* ===== 순수 계산 로직 (END) ===== */
 
 const KEY='foodbudget.v1';
+const num=s=>+String(s).replace(/[^0-9]/g,'')||0;           // 쉼표 등 제거 후 정수
+const fmt=n=>n?Number(n).toLocaleString('ko-KR'):'';          // 15000 -> '15,000'
+document.addEventListener('input',e=>{ if(e.target.classList&&e.target.classList.contains('money')) e.target.value=fmt(num(e.target.value)); });
 let st=JSON.parse(localStorage.getItem(KEY)||'null')||{incomes:[],fixed:[],food:0,start:ymd(new Date()),entries:[]};
 function migrate(){ // 단일 income -> incomes 목록
   if(!st.incomes){ st.incomes = st.income>0 ? [{name:'수입',amount:st.income,day:''}] : []; }
@@ -175,10 +181,10 @@ function render(){
   $('incomeList').innerHTML='';
   st.incomes.forEach((f,i)=>{
     const r=document.createElement('div'); r.className='row fixed-row';
-    r.innerHTML='<input placeholder="항목" value="'+f.name.replace(/"/g,'&quot;')+'"><input type="number" inputmode="numeric" placeholder="금액" value="'+f.amount+'"><input type="number" inputmode="numeric" min="1" max="31" placeholder="일" value="'+(f.day||'')+'" style="max-width:64px"><button class="ghost sm">삭제</button>';
-    const [n,a,d,b]=r.children;
+    r.innerHTML='<input placeholder="항목" value="'+f.name.replace(/"/g,'&quot;')+'"><span class="amt"><input type="text" class="money" inputmode="numeric" placeholder="금액" value="'+fmt(f.amount)+'"></span><input type="number" inputmode="numeric" min="1" max="31" placeholder="일" value="'+(f.day||'')+'" style="max-width:64px"><button class="ghost sm">삭제</button>';
+    const [n,aw,d,b]=r.children; const a=aw.firstChild;
     n.onchange=()=>{st.incomes[i].name=n.value;save();};
-    a.onchange=()=>{st.incomes[i].amount=+a.value||0;save();};
+    a.onchange=()=>{st.incomes[i].amount=num(a.value);save();};
     d.onchange=()=>{st.incomes[i].day=d.value;save();};
     b.onclick=()=>{st.incomes.splice(i,1);save();};
     $('incomeList').appendChild(r);
@@ -187,10 +193,10 @@ function render(){
   $('fixedList').innerHTML='';
   st.fixed.forEach((f,i)=>{
     const r=document.createElement('div'); r.className='row fixed-row';
-    r.innerHTML='<input placeholder="항목" value="'+f.name.replace(/"/g,'&quot;')+'"><input type="number" inputmode="numeric" value="'+f.amount+'"><button class="ghost sm">삭제</button>';
-    const [n,a,b]=r.children;
+    r.innerHTML='<input placeholder="항목" value="'+f.name.replace(/"/g,'&quot;')+'"><span class="amt"><input type="text" class="money" inputmode="numeric" value="'+fmt(f.amount)+'"></span><button class="ghost sm">삭제</button>';
+    const [n,aw,b]=r.children; const a=aw.firstChild;
     n.onchange=()=>{st.fixed[i].name=n.value;save();};
-    a.onchange=()=>{st.fixed[i].amount=+a.value||0;save();};
+    a.onchange=()=>{st.fixed[i].amount=num(a.value);save();};
     b.onclick=()=>{st.fixed.splice(i,1);save();};
     $('fixedList').appendChild(r);
   });
@@ -200,14 +206,14 @@ function render(){
   $('log').querySelectorAll('button').forEach(b=>b.onclick=()=>{st.entries.splice(+b.dataset.i,1);save();});
 }
 
-$('food').value=st.food||''; $('start').value=st.start; $('eDate').value=ymd(new Date());
+$('food').value=fmt(st.food); $('start').value=st.start; $('eDate').value=ymd(new Date());
 $('addIncome').onclick=()=>{st.incomes.push({name:'',amount:0,day:''});save();};
-$('food').onchange=e=>{st.food=+e.target.value||0;save();};
+$('food').onchange=e=>{st.food=num(e.target.value);save();};
 $('start').onchange=e=>{st.start=e.target.value;save();};
 $('addFixed').onclick=()=>{st.fixed.push({name:'',amount:0});save();};
 $('eType').onchange=e=>{$('modeRow').style.display=e.target.value==='big'?'flex':'none';};
 $('addBtn').onclick=()=>{
-  const amt=+$('eAmt').value; if(!(amt>0)||!$('eDate').value) return;
+  const amt=num($('eAmt').value); if(!(amt>0)||!$('eDate').value) return;
   const type=$('eType').value;
   st.entries.push({date:$('eDate').value,type,amount:amt,mode:type==='big'?$('eMode').value:null,memo:$('eMemo').value});
   $('eAmt').value=''; $('eMemo').value=''; save();
@@ -237,7 +243,7 @@ $('shareBtn').onclick=async()=>{
 };
 $('exp').onclick=()=>{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(st,null,1)],{type:'application/json'}));a.download='foodbudget-'+ymd(new Date())+'.json';a.click();};
 $('impBtn').onclick=()=>$('imp').click();
-$('imp').onchange=e=>{const f=e.target.files[0]; if(!f) return; f.text().then(t=>{try{st=JSON.parse(t);migrate();$('food').value=st.food||'';$('start').value=st.start;save();}catch(_){alert('올바른 JSON이 아닙니다.');}});};
+$('imp').onchange=e=>{const f=e.target.files[0]; if(!f) return; f.text().then(t=>{try{st=JSON.parse(t);migrate();$('food').value=fmt(st.food);$('start').value=st.start;save();}catch(_){alert('올바른 JSON이 아닙니다.');}});};
 render();
 </script>
 </body>
